@@ -1,0 +1,6 @@
+(assert (creature
+  (name 5)
+  (weapon 5)
+  (speed 5)
+  (intelligence 5)
+  (attitude curious)))

@@ -1,0 +1,6 @@
+(assert (creature
+  (name 1)
+  (weapon 4)
+  (speed 5)
+  (intelligence 5)
+  (attitude aggressive)))

@@ -1,0 +1,318 @@
+;; Calculate win
+(deffunction calculate-win (?ascore ?cscore)
+  (bind ?advantage (- ?ascore ?cscore)) ;; difference in scores
+  (if (>= ?advantage 2) then (bind ?result win))
+  (if (<= ?advantage -2) then (bind ?result loss))
+  (if (eq ?advantage 0) then (bind ?result draw))
+  (if (eq ?advantage 1) then 
+    (bind ?luck (mod (random) 2))
+  (if (eq ?luck 1) then (bind ?result win)
+   else (bind ?result draw)
+  )
+  )
+  (if (eq ?advantage -1) then 
+    (bind ?luck (mod (random) 2))
+  (if (eq ?luck 0) then (bind ?result loss)
+   else (bind ?result draw)
+  )
+  )
+  (return ?result)
+)
+
+;; Creature template
+(deftemplate creature
+  (slot name)
+  (slot weapon)
+  (slot speed)
+  (slot intelligence)
+  (slot attitude)
+)
+
+;; Player Stats and Items
+(deffacts adventurer
+  (creature
+    (name Adventurer)
+    (weapon 2)
+    (speed 3)
+    (intelligence 4)
+  )
+;; Gadget that should be removed after used
+;; Effect   +2weapon +3speed +2int
+  (specials flashgun jetpack textbook)
+)
+
+;; Reset stats after using a special
+(defrule reset-stats
+  (declare (salience 200))
+  ?adventurer <- (creature (name Adventurer)
+    (weapon ?wep)
+    (speed ?speed)
+    (intelligence ?int)
+  )
+  ?u <- (just-use ?gadget)
+  (not (creature (name ~Adventurer)))
+=>
+  (printout t "Your stats have reset back to normal." crlf crlf)
+  (retract ?u)
+  (if (eq ?gadget flashgun)
+   then
+    (modify ?adventurer (weapon (- ?wep 2)))
+  )
+  (if (eq ?gadget jetpack)
+   then
+    (modify ?adventurer (speed (- ?speed 3)))
+  )
+  (if (eq ?gadget textbook)
+   then
+    (modify ?adventurer (intelligence (- ?int 2)))
+  )
+)
+
+;; Turn
+(deffacts game-facts
+  (turn-counter 0)
+)
+
+;; Generate creature
+(defrule gen-creature
+  (not (creature (name ~Adventurer)))
+  (turn-counter ?n)  ;; updating this will refresh this rule
+=>
+  (bind ?wep (+ 1 (mod (random) 5)))
+  (bind ?speed (+ 1 (mod (random) 5)))
+  (bind ?int (+ 1 (mod (random) 5)))
+  (bind ?att (+ 1 (mod (random) 3)))
+  (if (eq ?att 1)
+   then (bind ?atttext scared))
+  (if (eq ?att 2)
+   then (bind ?atttext curious))
+  (if (eq ?att 3)
+   then (bind ?atttext aggressive))
+  (assert (creature
+    (name (random))
+    (weapon ?wep)
+    (speed ?speed)
+    (intelligence ?int)
+    (attitude ?atttext)))
+;;; The next lines are all for user interface purposes
+  (bind ?weptypeno (+ 1 (mod (random) 3)))
+;; Weapon description
+  (if (eq ?weptypeno 1)
+   then (bind ?weptype teeth))
+  (if (eq ?weptypeno 2)
+   then (bind ?weptype claws))
+  (if (eq ?weptypeno 3)
+   then (bind ?weptype rocks))
+  (if (eq ?wep 1)
+   then (bind ?weptext "very blunt"))
+  (if (eq ?wep 2)
+   then (bind ?weptext "blunt"))
+  (if (eq ?wep 3)
+   then (bind ?weptext "fairly sharp"))
+  (if (eq ?wep 4)
+   then (bind ?weptext "sharp"))
+  (if (eq ?wep 5)
+   then (bind ?weptext "razor sharp"))
+;; Speed description
+  (if (eq ?speed 1)
+   then (bind ?speedtext "very slow"))
+  (if (eq ?speed 2)
+   then (bind ?speedtext "slow"))
+  (if (eq ?speed 3)
+   then (bind ?speedtext "fairly fast"))
+  (if (eq ?speed 4)
+   then (bind ?speedtext "fast"))
+  (if (eq ?speed 5)
+   then (bind ?speedtext "lightning quick"))
+;; Intelligence description
+  (if (eq ?int 1)
+   then (bind ?inttext "very dumb"))
+  (if (eq ?int 2)
+   then (bind ?inttext "dumb"))
+  (if (eq ?int 3)
+   then (bind ?inttext "fairly smart"))
+  (if (eq ?int 4)
+   then (bind ?inttext "smart"))
+  (if (eq ?int 5)
+   then (bind ?inttext "really smart"))
+;; Monster description
+  (printout t "A creature appears!" crlf
+              "It has " ?weptext " " ?weptype "." crlf
+              "It looks " ?speedtext " and " ?inttext "." crlf
+              "It acts in a " ?atttext " manner." crlf crlf)
+)
+
+;; Choose gadget
+(defrule choose_special
+  (creature (name ~Adventurer))
+  (specials $?gadgets)
+  (test (>= (length$ $?gadgets) 1))
+  (not (just-use ?))
+  (turn-counter ?n)
+=>
+  (printout t "Choose gadget from " $?gadgets " :" crlf
+  "[1] Flashgun" crlf
+  "[2] Jetpack" crlf
+  "[3] Textbook" crlf
+  "[4] Nothing" crlf
+  )
+  (bind ?gadget (read))
+  (if (eq ?gadget 1)
+   then (assert (use flashgun)))
+  (if (eq ?gadget 2)
+   then (assert (use jetpack)))
+  (if (eq ?gadget 3)
+   then (assert (use textbook)))
+)
+
+;; Use gadget
+(defrule use-gadget
+  (declare (salience 190))
+  ?adventurer <- (creature (name Adventurer)
+    (weapon ?wep)
+    (speed ?speed)
+    (intelligence ?int)
+  )
+  ?u <- (use ?gadget)
+  ?s <- (specials $?first ?gadget $?last)
+=>
+  (retract ?u)
+  (retract ?s)
+  (assert (just-use ?gadget))
+  (printout t "You used " ?gadget "." crlf crlf)
+  (assert (specials $?first $?last))
+  (if (eq ?gadget flashgun)
+   then (modify ?adventurer (weapon (+ ?wep 2))))
+  (if (eq ?gadget jetpack)
+   then (modify ?adventurer (speed (+ ?speed 3))))
+  (if (eq ?gadget textbook)
+   then (modify ?adventurer (intelligence (+ ?int 2))))
+)
+
+;; Choose action
+(defrule choose-action
+  ;; A creature exists which isn't the Adventurer
+  (creature (name ~Adventurer))
+=>
+  (printout t "Choose an action [type 1-5]:" crlf
+  "[1] Fight" crlf
+  "[2] Flee" crlf
+  "[3] Hypnotise" crlf
+  "[4] Do nothing" crlf
+  )
+  (bind ?act (read))
+  (if (eq ?act 1)
+   then (assert (action fight)))
+  (if (eq ?act 2)
+   then (assert (action flee)))
+  (if (eq ?act 3)
+   then (assert (action hypnotise)))
+  (if (eq ?act 4)
+   then (assert (action do_nothing)))
+)
+
+;; Fight
+(defrule fight
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (weapon ?aWeapon))
+  ?c <- (creature (name ~Adventurer)
+    (weapon ?cWeapon))
+  ?a <- (action fight)
+=>
+  (retract ?a)
+  (bind ?result (calculate-win ?aWeapon ?cWeapon))
+  (if (eq ?result win)
+   then (printout t "You killed the creature." crlf crlf))
+  (if (eq ?result draw)
+   then (printout t "It’s a draw and the creature ran away." crlf crlf))
+  (if (eq ?result loss)
+   then (printout t "The creature killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?result loss)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Flee
+(defrule flee
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (speed ?aSpeed))
+  ?c <- (creature (name ~Adventurer)
+    (speed ?cSpeed))
+  ?a <- (action flee)
+=>
+  (retract ?a)
+  (bind ?result (- ?aSpeed ?cSpeed))
+  (if (> ?result 0)
+   then (printout t "You ran away." crlf crlf))
+  (if (eq ?result 0)
+   then (printout t "It’s a draw and the creature ran away." crlf crlf))
+  (if (< ?result 0)
+   then (printout t "The creature caught and killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (>= ?result 0)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Hypnotise
+(defrule hypnotise
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (intelligence ?aInt))
+  ?c <- (creature (name ~Adventurer)
+    (intelligence ?cInt))
+  ?a <- (action hypnotise)
+=>
+  (retract ?a)
+  (bind ?result (calculate-win ?aInt ?cInt))
+  (if (eq ?result win)
+   then (printout t "The creature falls asleep." crlf crlf))
+  (if (eq ?result draw)
+   then (printout t "It’s a draw and the creature runs away." crlf crlf))
+  (if (eq ?result loss)
+   then (printout t "The creature hypnotised and killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?result loss)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Do nothing
+(defrule do_nothing
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer))
+  ?c <- (creature (name ~Adventurer)
+    (attitude ?att))
+  ?a <- (action do_nothing)
+=>
+  (retract ?a)
+  (if (eq ?att scared)
+   then (printout t "The " ?att " creature ran away." crlf crlf))
+  (if (eq ?att curious)
+   then (printout t "The " ?att " creature watches you pass by." crlf crlf))
+  (if (eq ?att aggressive)
+   then (printout t "The " ?att " creature killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?att aggressive)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)

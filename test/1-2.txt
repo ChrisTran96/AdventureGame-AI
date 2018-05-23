@@ -1,0 +1,350 @@
+;; Calculate win
+(deffunction calculate-win (?ascore ?cscore)
+  (bind ?advantage (- ?ascore ?cscore)) ;; difference in scores
+  (if (>= ?advantage 2) then (bind ?result win))
+  (if (<= ?advantage -2) then (bind ?result loss))
+  (if (eq ?advantage 0) then (bind ?result draw))
+  (if (eq ?advantage 1) then 
+    (bind ?luck (mod (random) 2))
+  (if (eq ?luck 1) then (bind ?result win)
+   else (bind ?result draw)
+  )
+  )
+  (if (eq ?advantage -1) then 
+    (bind ?luck (mod (random) 2))
+  (if (eq ?luck 0) then (bind ?result loss)
+   else (bind ?result draw)
+  )
+  )
+  (return ?result)
+)
+
+;; Creature template
+(deftemplate creature
+  (slot name)
+  (slot weapon)
+  (slot speed)
+  (slot intelligence)
+  (slot attitude)
+)
+
+;; Player Stats and Items
+(deffacts adventurer
+  (creature
+    (name Adventurer)
+    (weapon 2)
+    (speed 3)
+    (intelligence 4)
+  )
+;; Gadget that should be removed after used
+;; Effect   +2weapon +3speed +2int
+  (specials flashgun jetpack textbook)
+)
+
+;; Reset stats after using a special
+(defrule reset-stats
+  (declare (salience 200))
+  ?adventurer <- (creature (name Adventurer)
+    (weapon ?wep)
+    (speed ?speed)
+    (intelligence ?int)
+  )
+  ?u <- (just-use ?gadget)
+  (not (creature (name ~Adventurer)))
+=>
+  (printout t "Your stats have reset back to normal." crlf crlf)
+  (retract ?u)
+  (if (eq ?gadget flashgun)
+   then
+    (modify ?adventurer (weapon (- ?wep 2)))
+  )
+  (if (eq ?gadget jetpack)
+   then
+    (modify ?adventurer (speed (- ?speed 3)))
+  )
+  (if (eq ?gadget textbook)
+   then
+    (modify ?adventurer (intelligence (- ?int 2)))
+  )
+)
+
+;; Turn
+(deffacts game-facts
+  (turn-counter 0)
+)
+
+;; Use gadget
+(defrule use-gadget
+  (declare (salience 190))
+  ?adventurer <- (creature (name Adventurer)
+    (weapon ?wep)
+    (speed ?speed)
+    (intelligence ?int)
+  )
+  ?u <- (use ?gadget)
+  ?s <- (specials $?first ?gadget $?last)
+=>
+  (retract ?u)
+  (retract ?s)
+  (assert (just-use ?gadget))
+  (printout t "You used " ?gadget "." crlf crlf)
+  (assert (specials $?first $?last))
+  (if (eq ?gadget flashgun)
+   then (modify ?adventurer (weapon (+ ?wep 2))))
+  (if (eq ?gadget jetpack)
+   then (modify ?adventurer (speed (+ ?speed 3))))
+  (if (eq ?gadget textbook)
+   then (modify ?adventurer (intelligence (+ ?int 2))))
+)
+
+;; Fight
+(defrule fight
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (weapon ?aWeapon))
+  ?c <- (creature (name ~Adventurer)
+    (weapon ?cWeapon))
+  ?a <- (action fight)
+=>
+  (retract ?a)
+  (bind ?result (calculate-win ?aWeapon ?cWeapon))
+  (if (eq ?result win)
+   then (printout t "You killed the creature." crlf crlf))
+  (if (eq ?result draw)
+   then (printout t "It’s a draw and the creature ran away." crlf crlf))
+  (if (eq ?result loss)
+   then (printout t "The creature killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?result loss)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Flee
+(defrule flee
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (speed ?aSpeed))
+  ?c <- (creature (name ~Adventurer)
+    (speed ?cSpeed))
+  ?a <- (action flee)
+=>
+  (retract ?a)
+  (bind ?result (- ?aSpeed ?cSpeed))
+  (if (> ?result 0)
+   then (printout t "You ran away." crlf crlf))
+  (if (eq ?result 0)
+   then (printout t "It’s a draw and the creature ran away." crlf crlf))
+  (if (< ?result 0)
+   then (printout t "The creature caught and killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (>= ?result 0)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Hypnotise
+(defrule hypnotise
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer)
+    (intelligence ?aInt))
+  ?c <- (creature (name ~Adventurer)
+    (intelligence ?cInt))
+  ?a <- (action hypnotise)
+=>
+  (retract ?a)
+  (bind ?result (calculate-win ?aInt ?cInt))
+  (if (eq ?result win)
+   then (printout t "The creature falls asleep." crlf crlf))
+  (if (eq ?result draw)
+   then (printout t "It’s a draw and the creature runs away." crlf crlf))
+  (if (eq ?result loss)
+   then (printout t "The creature hypnotised and killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?result loss)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;; Do nothing
+(defrule do_nothing
+  ?turn <- (turn-counter ?n)
+  (creature (name Adventurer))
+  ?c <- (creature (name ~Adventurer)
+    (attitude ?att))
+  ?a <- (action do_nothing)
+=>
+  (retract ?a)
+  (if (eq ?att scared)
+   then (printout t "The " ?att " creature ran away." crlf crlf))
+  (if (eq ?att curious)
+   then (printout t "The " ?att " creature watches you pass by." crlf crlf))
+  (if (eq ?att aggressive)
+   then (printout t "The " ?att " creature killed you." crlf
+                    "You lasted " ?n " turns." crlf crlf)
+    (halt))
+  (if (neq ?att aggressive)
+   then
+    (retract ?turn)
+    (retract ?c)
+    (assert (turn-counter (+ ?n 1)))
+  )
+)
+
+;;; AI pattern matching
+;; AI behaviour 1
+;; Do nothing when fight a scared or curious creature
+(defrule ai-behaviour1
+  (creature (name ~Adventurer)
+    (attitude scared|curious))
+  (not (action ?))  ;; Stop the rule from firing
+=>
+  (printout t "Behaviour 1: Do nothing." crlf crlf)
+  (assert (action do_nothing))
+)
+
+;; AI behaviour 2: when creature is aggressive but weak
+;; Rule 1: Hypnotise dumb creature
+(defrule ai-behaviour2-rule1
+  (declare (salience 180))
+  (creature (name Adventurer)
+    (intelligence ?aInt))
+  (creature (name ~Adventurer)
+    (intelligence ?cInt)
+    (attitude aggressive))
+  (test (>= ?aInt ?cInt))
+  (not (action ?))
+=>
+  (printout t "Behaviour 2 - rule 1: Hypnotise." crlf crlf)
+  (assert (action hypnotise))
+)
+
+;; Rule 2: Run away from slower creature
+(defrule ai-behaviour2-rule2
+  (declare (salience 180))
+  (creature (name Adventurer)
+    (speed ?aSpeed))
+  ?c <- (creature (name ~Adventurer)
+    (speed ?cSpeed)
+    (attitude aggressive))
+  (test (>= ?aSpeed ?cSpeed))
+  (not (action ?))
+=>
+  (printout t "Behaviour 2 - rule 2: Flee." crlf crlf)
+  (assert (action flee))
+)
+
+;; Rule 3: Kill weaker creature
+(defrule ai-behaviour2-rule3
+  (declare (salience 180))
+  (creature (name Adventurer)
+    (weapon ?aWeapon))
+  (creature (name ~Adventurer)
+    (weapon ?cWeapon)
+    (attitude aggressive))
+  (test (>= ?aWeapon ?cWeapon))
+  (not (action ?))
+=>
+  (printout t "Behaviour 2 - rule 3: Fight." crlf crlf)
+  (assert (action fight))
+)
+
+;; AI behaviour 3: when creature is aggressive and strong
+;; Rule 1: if the creature can be killed after using flashgun
+(defrule ai-behaviour3-rule1
+  (declare (salience 150))
+  (creature (name Adventurer)
+    (weapon ?aWeapon))
+  (creature (name ~Adventurer)
+    (weapon ?cWeapon)
+    (attitude aggressive))
+  (test (< ?aWeapon ?cWeapon))
+  (test (>= (+ ?aWeapon 2) ?cWeapon))
+  (specials $?first flashgun $?last)
+  (not (action ?))
+  (not (use ?))
+=>
+  (printout t "Behaviour 3 - rule 1: Use flashgun." crlf crlf)
+  (assert (use flashgun))
+)
+
+;; Rule 2: if adventurer can run away after using jetpack
+(defrule ai-behaviour3-rule2
+  (declare (salience 150))
+  (creature (name Adventurer)
+    (speed ?aSpeed))
+  ?c <- (creature (name ~Adventurer)
+    (speed ?cSpeed)
+    (attitude aggressive))
+  (test (< ?aSpeed ?cSpeed))
+  (test (>= (+ ?aSpeed 3) ?cSpeed))
+  (specials $?first jetpack $?last)
+  (not (action ?))
+  (not (use ?))
+=>
+  (printout t "Behaviour 3 - rule 2: Use jetpack." crlf crlf)
+  (assert (use jetpack))
+)
+
+;; Rule 3: if the creature can be hypnotised after using textbook
+(defrule ai-behaviour3-rule3
+  (declare (salience 150))
+  (creature (name Adventurer)
+    (intelligence ?aInt))
+  (creature (name ~Adventurer)
+    (intelligence ?cInt)
+    (attitude aggressive))
+  (test (< ?aInt ?cInt))
+  (test (>= (+ ?aInt 2) ?cInt))
+  (specials $?first textbook $?last)
+  (not (action ?))
+  (not (use ?))
+=>
+  (printout t "Behaviour 3 - rule 3: Use textbook." crlf crlf)
+  (assert (use textbook))
+)
+
+;; AI behaviour 4: when the aggressive creature is too strong
+;;                 so the AI will try to get the 50% draw
+;;                 from -1 score on Int
+;;                 and try Hypnotise
+(defrule ai-behaviour4
+  (declare (salience 120))
+  (creature (name Adventurer)
+    (intelligence ?aInt))
+  (creature (name ~Adventurer)
+    (intelligence ?cInt)
+    (attitude aggressive))
+  (test (eq (- ?aInt ?cInt) -1))
+  (not (action ?))
+  (not (specials $?first textbook $?last))
+=>
+  (printout t "Behaviour 4: Try Hypnotise (50% draw or lose)." crlf crlf)
+  (assert (action hypnotise))
+)
+
+;; AI behaviour 5: when there is no solution
+;; This behaviour is rarely fired
+;; because the game usually stop at behaviour4-rule1
+(defrule ai-behaviour5
+  (declare (salience 50))
+  (creature (name ~Adventurer)
+    (attitude aggressive))
+  (not (action ?))
+  (not (use ?))
+=>
+  (printout t "Behaviour 5: Give up." crlf crlf)
+  (assert (action do_nothing))
+)
